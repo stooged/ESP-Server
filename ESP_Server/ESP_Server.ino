@@ -1,4 +1,4 @@
-
+#include <SoftwareSerial.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
@@ -6,15 +6,25 @@
 #include <SD.h>
 
 
+DNSServer dnsServer;
+ESP8266WebServer webServer;
+
+SoftwareSerial uartSerial(0, 2);  // pins 0 and 2 are used here as they translate to pins D3 and D4 on the "D1 Mini board"
+WiFiServer uartServer(24);       // you will need to change these pins to suit pins you select on your esp board for uart RX/TX
+WiFiClient uartClient;          // the uart socket port is 24 its best to just leave this unless you need to change it for some reason
+
+
+//------default settings if config.ini is missing------//
 String AP_SSID = "PS4_WEB_AP";
 String AP_PASS = "password";
 int DNS_PORT = 53;
 int WEB_PORT = 80;
+int UART_PORT = 24;
 IPAddress Server_IP(10,1,1,1);
 IPAddress Subnet_Mask(255,255,255,0);
+//-----------------------------------------------------//
 
-DNSServer dnsServer;
-ESP8266WebServer webServer;
+
 
 
 String split(String str, String from, String to)
@@ -45,9 +55,11 @@ void returnOK() {
   webServer.send(200, "text/plain", "");
 }
 
+
 void returnFail(String msg) {
   webServer.send(500, "text/plain", msg + "\r\n");
 }
+
 
 bool loadFromSdCard(String path) {
   String dataType = "text/plain";
@@ -125,6 +137,38 @@ void handleNotFound() {
 }
 
 
+
+void handleUart()
+{
+  if(!uartClient.connected())
+  {
+    uartClient = uartServer.available();
+  }
+  else
+  {
+    if(uartClient.available() > 0)
+    {
+      char data[1024];
+      int cnt = 0;
+      while(uartClient.available())
+      {
+        data[cnt] = uartClient.read();
+        cnt++;
+      }    
+      uartClient.flush();
+      String cBuffer = String(data);
+      Serial.println(cBuffer);
+      //process commands to send
+      //uartSerial.print(cBuffer);
+    }
+    
+    while (uartSerial.available() > 0) {
+       String sData = uartSerial.readString();   
+       Serial.print(sData);  
+       uartClient.print(sData);  
+    }
+    }
+}
 
 
 void setup(void) {
@@ -227,11 +271,29 @@ void setup(void) {
   else
   {
      Serial.println("No SD card found");
+     Serial.println("Starting Wifi AP without webserver");
+     WiFi.mode(WIFI_AP);
+     WiFi.softAPConfig(Server_IP, Server_IP, Subnet_Mask);
+     WiFi.softAP(AP_SSID.c_str(), AP_PASS.c_str());
+     Serial.println("WIFI AP started");
+
+     dnsServer.setTTL(30);
+     dnsServer.setErrorReplyCode(DNSReplyCode::ServerFailure);
+     dnsServer.start(DNS_PORT, "*", Server_IP);
+     Serial.println("DNS server started");
   }
   
+  uartSerial.setTimeout(100);
+  uartSerial.begin(115200);
+  uartServer.begin();
+  Serial.println("UART server started");
+  
 }
+
+
 
 void loop(void) {
   dnsServer.processNextRequest();
   webServer.handleClient();
+  handleUart();
 }
