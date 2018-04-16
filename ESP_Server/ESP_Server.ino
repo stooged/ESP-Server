@@ -179,14 +179,16 @@ void updateFw()
   if (updateFile) {
   pinMode(BUILTIN_LED, OUTPUT);
   digitalWrite(BUILTIN_LED, LOW);
-  uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
-  if (!Update.begin(maxSketchSpace, U_FLASH)) {
+  size_t updateSize = updateFile.size();
+   if (updateSize > 0) {   
+    uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+    if (!Update.begin(maxSketchSpace, U_FLASH)) {
     Update.printError(Serial);
     digitalWrite(BUILTIN_LED, HIGH);
     return;
-  }
+    }
    Serial.println("Updating Firmware");
-   long ufLen = (updateFile.size() / 128);
+   long ufLen = (updateSize / 128);
    long bsent = 0;
    int cprog = 0;
     while (updateFile.available()) {
@@ -206,6 +208,12 @@ void updateFw()
   Serial.println("Update complete");
   SD.remove("fwupdate.bin");
   ESP.restart();
+    }
+  else {
+  Serial.println("Error, file is empty");
+  digitalWrite(BUILTIN_LED, HIGH);
+  return;		
+  }
   }
   }
   else
