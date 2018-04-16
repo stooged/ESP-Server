@@ -5,7 +5,7 @@
 #include <SPI.h>
 #include <SD.h>
 
-
+MD5Builder md5;
 DNSServer dnsServer;
 ESP8266WebServer webServer;
 
@@ -13,6 +13,8 @@ SoftwareSerial uartSerial(0, 2);  // pins 0 and 2 are used here as they translat
 WiFiServer uartServer(24);       // you will need to change these pins to suit pins you select on your esp board for uart RX/TX
 WiFiClient uartClient;          // the uart socket port is 24 its best to just leave this unless you need to change it for some reason
 
+String firmwareFile = "fwupdate.bin"; //update filename
+String firmwareVer = "1.04"; 
 
 //------default settings if config.ini is missing------//
 String AP_SSID = "PS4_WEB_AP";
@@ -174,45 +176,75 @@ void handleUart()
 void updateFw()
 {
   File updateFile;
-  if (SD.exists("fwupdate.bin")) {
-  updateFile = SD.open("fwupdate.bin", FILE_READ);
+  if (SD.exists(firmwareFile)) {
+  updateFile = SD.open(firmwareFile, FILE_READ);
+ if (updateFile) {
+  size_t updateSize = updateFile.size();
+   if (updateSize > 0) {   
+    md5.begin();
+    md5.addStream(updateFile,updateSize);
+    md5.calculate();
+    String md5Hash = md5.toString();
+    Serial.println("Update file hash: " + md5Hash);
+    updateFile.close();
+    
+    updateFile = SD.open(firmwareFile, FILE_READ);
   if (updateFile) {
   pinMode(BUILTIN_LED, OUTPUT);
   digitalWrite(BUILTIN_LED, LOW);
-  size_t updateSize = updateFile.size();
-   if (updateSize > 0) {   
+
     uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
     if (!Update.begin(maxSketchSpace, U_FLASH)) {
     Update.printError(Serial);
     digitalWrite(BUILTIN_LED, HIGH);
     return;
     }
-   Serial.println("Updating Firmware");
-   long ufLen = (updateSize / 128);
+    
+    int md5BufSize = md5Hash.length() + 1;
+    char md5Buf[md5BufSize];
+    md5Hash.toCharArray(md5Buf, md5BufSize) ;
+    Update.setMD5(md5Buf);
+
+    Serial.println("Updating firmware...");
+    
    long bsent = 0;
    int cprog = 0;
     while (updateFile.available()) {
-    uint8_t ibuffer[128];
-    updateFile.read((uint8_t *)ibuffer, 128);
+    uint8_t ibuffer[1];
+    updateFile.read((uint8_t *)ibuffer, 1);
     Update.write(ibuffer, sizeof(ibuffer));
       bsent++;
-      int progr = ((double)bsent /  ufLen)*100;
+      int progr = ((double)bsent /  updateSize)*100;
       if (progr >= cprog) {
         cprog = progr + 10;
       Serial.println(String(progr) + "%");
       }
     }
-  Update.end(true);
-  updateFile.close();
+
+    updateFile.close(); 
+
+   if (Update.end(true))
+  {
   digitalWrite(BUILTIN_LED, HIGH);
+  Serial.println("Installed firmware hash: " + Update.md5String()); 
   Serial.println("Update complete");
-  SD.remove("fwupdate.bin");
+  SD.remove(firmwareFile);
   ESP.restart();
+  }
+  else
+  {
+    digitalWrite(BUILTIN_LED, HIGH);
+    Serial.println("Update failed");
+     Update.printError(Serial);
     }
+  }
+  }
   else {
-  Serial.println("Error, file is empty");
+  Serial.println("Error, file is invalid");
+  updateFile.close(); 
   digitalWrite(BUILTIN_LED, HIGH);
-  return;		
+  SD.remove(firmwareFile);
+  return;    
   }
   }
   }
@@ -228,7 +260,7 @@ void setup(void) {
 
   Serial.begin(115200);
   Serial.setDebugOutput(true);
-  Serial.print("\n");
+  Serial.println("Version: " + firmwareVer);
 
   if (SD.begin(SS)) {
   File iniFile;
