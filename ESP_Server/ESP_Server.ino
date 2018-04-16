@@ -171,6 +171,51 @@ void handleUart()
 }
 
 
+void updateFw()
+{
+  File updateFile;
+  if (SD.exists("fwupdate.bin")) {
+  updateFile = SD.open("fwupdate.bin", FILE_READ);
+  if (updateFile) {
+  pinMode(BUILTIN_LED, OUTPUT);
+  digitalWrite(BUILTIN_LED, LOW);
+  uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+  if (!Update.begin(maxSketchSpace, U_FLASH)) {
+    Update.printError(Serial);
+    digitalWrite(BUILTIN_LED, HIGH);
+    return;
+  }
+   Serial.println("Updating Firmware");
+   long ufLen = (updateFile.size() / 128);
+   long bsent = 0;
+   int cprog = 0;
+    while (updateFile.available()) {
+    uint8_t ibuffer[128];
+    updateFile.read((uint8_t *)ibuffer, 128);
+    Update.write(ibuffer, sizeof(ibuffer));
+      bsent++;
+      int progr = ((double)bsent /  ufLen)*100;
+      if (progr >= cprog) {
+        cprog = progr + 10;
+      Serial.println(String(progr) + "%");
+      }
+    }
+  Update.end(true);
+  updateFile.close();
+  digitalWrite(BUILTIN_LED, HIGH);
+  Serial.println("Update complete");
+  SD.remove("fwupdate.bin");
+  ESP.restart();
+  }
+  }
+  else
+  {
+    Serial.println("No update file found");
+  }
+}
+
+
+
 void setup(void) {
 
   Serial.begin(115200);
@@ -243,6 +288,7 @@ void setup(void) {
   }
 
 
+  updateFw();
   Serial.println("SSID: " + AP_SSID);
   Serial.println("Password: " + AP_PASS);
   Serial.print("\n");
