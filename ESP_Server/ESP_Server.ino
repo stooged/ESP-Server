@@ -175,8 +175,9 @@ void handleUart()
 
 void updateFw()
 {
-  File updateFile;
   if (SD.exists(firmwareFile)) {
+  File updateFile;
+  Serial.println("Update file found");
   updateFile = SD.open(firmwareFile, FILE_READ);
  if (updateFile) {
   size_t updateSize = updateFile.size();
@@ -187,26 +188,22 @@ void updateFw()
     String md5Hash = md5.toString();
     Serial.println("Update file hash: " + md5Hash);
     updateFile.close();
-    
     updateFile = SD.open(firmwareFile, FILE_READ);
   if (updateFile) {
   pinMode(BUILTIN_LED, OUTPUT);
   digitalWrite(BUILTIN_LED, LOW);
-
     uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
     if (!Update.begin(maxSketchSpace, U_FLASH)) {
     Update.printError(Serial);
     digitalWrite(BUILTIN_LED, HIGH);
+	updateFile.close();
     return;
     }
-    
     int md5BufSize = md5Hash.length() + 1;
     char md5Buf[md5BufSize];
     md5Hash.toCharArray(md5Buf, md5BufSize) ;
     Update.setMD5(md5Buf);
-
     Serial.println("Updating firmware...");
-    
    long bsent = 0;
    int cprog = 0;
     while (updateFile.available()) {
@@ -220,9 +217,7 @@ void updateFw()
       Serial.println(String(progr) + "%");
       }
     }
-
     updateFile.close(); 
-
    if (Update.end(true))
   {
   digitalWrite(BUILTIN_LED, HIGH);
@@ -326,7 +321,6 @@ void setup(void) {
     iniFile.close();
     }
   }
-
 
   updateFw();
   Serial.println("SSID: " + AP_SSID);
