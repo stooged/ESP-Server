@@ -95,6 +95,7 @@ bool loadFromSdCard(String path) {
 
   File dataFile = SD.open(path.c_str());
   if (dataFile.isDirectory()) {
+	dataFile.close();
     path += "/index.htm";
     dataType = "text/html";
     dataFile = SD.open(path.c_str());
