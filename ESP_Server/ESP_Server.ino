@@ -14,7 +14,8 @@ WiFiServer uartServer(24);       // you will need to change these pins to suit p
 WiFiClient uartClient;          // the uart socket port is 24 its best to just leave this unless you need to change it for some reason
 
 String firmwareFile = "fwupdate.bin"; //update filename
-String firmwareVer = "1.04"; 
+String firmwareVer = "1.05"; 
+int hasSD = 0;
 
 //------default settings if config.ini is missing------//
 String AP_SSID = "PS4_WEB_AP";
@@ -121,7 +122,11 @@ bool loadFromSdCard(String path) {
 
 
 void handleNotFound() {
-  if (loadFromSdCard(webServer.uri())) {
+  if (hasSD == 0){
+    webServer.send(200, "text/plain", "\n\nNo SD card found");
+    return;
+  }
+  else if (loadFromSdCard(webServer.uri())) {
     return;
   }
   String message = "\n\n";
@@ -260,6 +265,7 @@ void setup(void) {
 
   if (SD.begin(SS)) {
   File iniFile;
+  hasSD = 1;
   
   if (SD.exists("config.ini")) {
   iniFile = SD.open("config.ini", FILE_READ);
@@ -270,8 +276,7 @@ void setup(void) {
       iniData += chnk;
     }
    iniFile.close();
-
-
+   
    if(instr(iniData,"SSID="))
    {
    AP_SSID = split(iniData,"SSID=","\r\n");
@@ -324,6 +329,13 @@ void setup(void) {
   }
 
   updateFw();
+  }
+  else
+  {
+    Serial.println("No SD card found");
+    hasSD = 0;
+  }
+
   Serial.println("SSID: " + AP_SSID);
   Serial.println("Password: " + AP_PASS);
   Serial.print("\n");
@@ -333,7 +345,6 @@ void setup(void) {
   Serial.println("DNS Server IP: " + Server_IP.toString());
   Serial.println("DNS Server Port: " + String(DNS_PORT));
   Serial.print("\n\n");
-
 
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(Server_IP, Server_IP, Subnet_Mask);
@@ -348,22 +359,7 @@ void setup(void) {
   webServer.onNotFound(handleNotFound);
   webServer.begin(WEB_PORT);
   Serial.println("HTTP server started");
-  }
-  else
-  {
-     Serial.println("No SD card found");
-     Serial.println("Starting Wifi AP without webserver");
-     WiFi.mode(WIFI_AP);
-     WiFi.softAPConfig(Server_IP, Server_IP, Subnet_Mask);
-     WiFi.softAP(AP_SSID.c_str(), AP_PASS.c_str());
-     Serial.println("WIFI AP started");
 
-     dnsServer.setTTL(30);
-     dnsServer.setErrorReplyCode(DNSReplyCode::ServerFailure);
-     dnsServer.start(DNS_PORT, "*", Server_IP);
-     Serial.println("DNS server started");
-  }
-  
   uartSerial.setTimeout(100);
   uartSerial.begin(115200);
   uartServer.begin();
